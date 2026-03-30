@@ -288,6 +288,50 @@
       when: app_wait is failed
       ignore_errors: yes
 
+    - name: Print PM2 process list if app did not start
+      shell: pm2 list
+      become: yes
+      become_user: ubuntu
+      when: app_wait is failed
+      ignore_errors: yes
+      register: pm2_list
+
+    - name: Show PM2 process list
+      debug:
+        var: pm2_list.stdout_lines
+      when: app_wait is failed and pm2_list is defined
+
+    - name: Check if .env file exists and show contents
+      shell: cat "{{ app_dir }}/.env" 2>/dev/null || echo "No .env file found"
+      when: app_wait is failed
+      ignore_errors: yes
+      register: env_contents
+
+    - name: Show .env contents
+      debug:
+        var: env_contents.stdout_lines
+      when: app_wait is failed and env_contents is defined
+
+    - name: Check npm start directly
+      shell: |
+        cd "{{ app_dir }}"
+        set -a
+        [ -f .env ] && . .env
+        set +a
+        timeout 10 node server.js 2>&1 || true
+      args:
+        executable: /bin/bash
+      become: yes
+      become_user: ubuntu
+      when: app_wait is failed
+      ignore_errors: yes
+      register: node_direct
+
+    - name: Show direct node output
+      debug:
+        var: node_direct.stdout_lines
+      when: app_wait is failed and node_direct is defined
+
     - name: Fail if app did not start
       fail:
         msg: "App did not start on port 3000 within 120 seconds"
