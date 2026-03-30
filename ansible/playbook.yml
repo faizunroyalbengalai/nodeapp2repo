@@ -332,10 +332,52 @@
         var: node_direct.stdout_lines
       when: app_wait is failed and node_direct is defined
 
+    - name: Show PM2 environment for app process
+      shell: pm2 env app 2>/dev/null || echo "PM2 env not available"
+      become: yes
+      become_user: ubuntu
+      when: app_wait is failed
+      ignore_errors: yes
+      register: pm2_env
+
+    - name: Display PM2 env output
+      debug:
+        var: pm2_env.stdout_lines
+      when: app_wait is failed and pm2_env is defined
+
+    - name: Restart app with explicit env vars from .env
+      shell: |
+        set -a
+        [ -f "{{ app_dir }}/.env" ] && . "{{ app_dir }}/.env"
+        export PORT="${PORT:-3000}"
+        export HOST="${HOST:-0.0.0.0}"
+        set +a
+        pm2 delete app 2>/dev/null || true
+        cd "{{ app_dir }}"
+        PORT=3000 HOST=0.0.0.0 pm2 start npm --name app -- start --update-env
+        pm2 save
+      args:
+        executable: /bin/bash
+        chdir: "{{ app_dir }}"
+      become: yes
+      become_user: ubuntu
+      when: app_wait is failed
+      ignore_errors: yes
+
+    - name: Wait again after restart attempt
+      wait_for:
+        host: 127.0.0.1
+        port: 3000
+        timeout: 60
+        delay: 5
+      register: app_wait2
+      when: app_wait is failed
+      ignore_errors: yes
+
     - name: Fail if app did not start
       fail:
         msg: "App did not start on port 3000 within 120 seconds"
-      when: app_wait is failed
+      when: app_wait is failed and (app_wait2 is not defined or app_wait2 is failed)
 
     - name: Print server IP
       debug:
