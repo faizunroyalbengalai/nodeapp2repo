@@ -374,6 +374,56 @@
       when: app_wait is failed
       ignore_errors: yes
 
+    - name: Collect PM2 logs after second wait failure
+      shell: pm2 logs --lines 150 app --nostream 2>&1 || true
+      become: yes
+      become_user: ubuntu
+      when: app_wait is failed and (app_wait2 is not defined or app_wait2 is failed)
+      ignore_errors: yes
+      register: pm2_logs_final
+
+    - name: Show PM2 logs after second wait failure
+      debug:
+        var: pm2_logs_final.stdout_lines
+      when: app_wait is failed and (app_wait2 is not defined or app_wait2 is failed) and pm2_logs_final is defined
+
+    - name: Check node version and package.json
+      shell: |
+        node --version
+        cat "{{ app_dir }}/package.json" 2>/dev/null || echo "no package.json"
+      args:
+        executable: /bin/bash
+      become: yes
+      become_user: ubuntu
+      when: app_wait is failed and (app_wait2 is not defined or app_wait2 is failed)
+      ignore_errors: yes
+      register: node_info
+
+    - name: Show node info
+      debug:
+        var: node_info.stdout_lines
+      when: app_wait is failed and (app_wait2 is not defined or app_wait2 is failed) and node_info is defined
+
+    - name: Try running app directly with node for diagnostics
+      shell: |
+        cd "{{ app_dir }}"
+        set -a
+        [ -f .env ] && . .env
+        set +a
+        timeout 15 node server.js 2>&1 || true
+      args:
+        executable: /bin/bash
+      become: yes
+      become_user: ubuntu
+      when: app_wait is failed and (app_wait2 is not defined or app_wait2 is failed)
+      ignore_errors: yes
+      register: node_direct_final
+
+    - name: Show direct node output final
+      debug:
+        var: node_direct_final.stdout_lines
+      when: app_wait is failed and (app_wait2 is not defined or app_wait2 is failed) and node_direct_final is defined
+
     - name: Fail if app did not start
       fail:
         msg: "App did not start on port 3000 within 120 seconds"
